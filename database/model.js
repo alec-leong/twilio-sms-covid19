@@ -35,13 +35,13 @@ PhoneNumbers.init({
       is: /^\+\d{3,15}$/,
     },
   },
-  confirmation_code: {
-    type: DataTypes.STRING(255),
-    allowNull: false,
-    validate: {
-      is: /^[a-zA-Z0-9]+$/,
-    },
-  },
+  // confirmation_code: {
+  //   type: DataTypes.STRING(255),
+  //   allowNull: false,
+  //   validate: {
+  //     is: /^[a-zA-Z0-9]+$/,
+  //   },
+  // },
   subscription_status: {
     type: DataTypes.STRING(10),
     allowNull: false,
