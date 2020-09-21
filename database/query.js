@@ -30,11 +30,13 @@ const insertPhoneRecord = async (phoneRecord, res) => {
     console.error(err);
 
     if (err.name === 'SequelizeUniqueConstraintError' || err.parent.code === '23505') { // `e164_format` field must be unique.
-      const subscriptionStatus = err.errors[0].instance.dataValues.subscription_status;
+      const existingUser = await PhoneNumbers.findByPk(phoneRecord.e164_format);
 
-      if (/^pending$/i.test(subscriptionStatus)) {
+      // const subscriptionStatus = err.errors[0].instance.dataValues.subscription_status;
+
+      if (/^pending$/i.test(existingUser.subscription_status)) {
         res.status(500).send({ message: 'Pending subscription.' });
-      } else if (/^subscribed$/i.test(subscriptionStatus)) {
+      } else if (/^subscribed$/i.test(existingUser.subscription_status)) {
         res.status(500).send({ message: 'Already subscribed.' });
       } else {
         res.status(500).send({ message: 'An unexpected error occurred on a send.' });
