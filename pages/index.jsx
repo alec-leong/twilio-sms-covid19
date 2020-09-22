@@ -6,7 +6,7 @@ class IndexPage extends React.Component {
   constructor(props) {
     super(props);
 
-    this.phoneRegex = RegExp(/^\([0-9]{3}\)[0-9]{3}-[0-9]{4}$/);
+    this.phoneRegex = RegExp(/^\([0-9]{3}\)\s{1}[0-9]{3}-[0-9]{4}$/);
     this.fields = ['country_code', 'identification_code', 'subscriber_number', 'e164_format'];
     this.state = {
       phoneNumber: '',
@@ -49,24 +49,26 @@ class IndexPage extends React.Component {
     const { phoneNumber } = this.state;
 
     if (this.phoneRegex.test(phoneNumber)) {
-      const sanitizedPhoneNum = phoneNumber.replace(/-/gi, '');
-      const phoneRecord = {
-        country_code: '1',
-      };
-      const numRegex = /\d+-?\d+/g;
-      let searchArray = numRegex.exec(sanitizedPhoneNum);
-      let fieldsIdx = 1; // Start at `1` since `country_code` is known.
-      let e164Format = '+1';
-      while (searchArray) {
-        const result = searchArray[0];
-        phoneRecord[this.fields[fieldsIdx]] = result;
-        searchArray = numRegex.exec(sanitizedPhoneNum);
-        fieldsIdx += 1;
-        e164Format += result;
+      const phoneRecord = { country_code: '1', subscription_status: 'pending' };
+      const decodePhoneNumber = /\d{1,}/g;
+      const partitionedPhoneNumber = [];
+      let results = decodePhoneNumber.exec(phoneNumber);
+      while (results) {
+        partitionedPhoneNumber.push(results[0]);
+        results = decodePhoneNumber.exec(phoneNumber);
       }
-      phoneRecord.e164_format = e164Format;
-      phoneRecord.subscription_status = 'pending';
-
+      /* `partitionedPhoneNumber` example:
+      ┌─────────┬────────┐
+      │ (index) │ Values │
+      ├─────────┼────────┤
+      │    0    │ '415'  │
+      │    1    │ '123'  │
+      │    2    │ '4567' │
+      └─────────┴────────┘ */
+      [phoneRecord.identification_code] = [...partitionedPhoneNumber];
+      phoneRecord.subscriber_number = partitionedPhoneNumber[1] + partitionedPhoneNumber[2];
+      phoneRecord.e164_format = '+' + phoneRecord.country_code + phoneRecord.identification_code 
+        + phoneRecord.subscriber_number;
       axios.post('/sms-form', { phoneRecord })
         .then((res) => {
           const { message } = res.data;
@@ -116,10 +118,10 @@ class IndexPage extends React.Component {
             <legend className="header2">City of San Francisco COVID-19 SMS Text Delivery Sign-up Form</legend>
             <form className="form-container" onSubmit={this.handleSubmit}>
               <label htmlFor="phone" className="phone-label">Enter your phone number:</label>
-              <input type="tel" id="phone" className="phone-input" name="phoneNumber" placeholder="Format: (123)456-7890" pattern="\([0-9]{3}\)[0-9]{3}-[0-9]{4}" minLength="13" maxLength="13" autoComplete="on" onChange={this.handleChange} value={phoneNumber} required />
+              <input type="text" id="phone" className="phone-input" name="phoneNumber" placeholder="(123) 456-7890" pattern="\([0-9]{3}\)\s{1}[0-9]{3}-[0-9]{4}" minLength="14" maxLength="14" autoComplete="on" onChange={this.handleChange} value={phoneNumber} required />
               <input type="reset" className="clear-input" value="Clear" onClick={this.clearForm} />
               <input type="submit" className="submit-input" value="Submit" />
-              <small className="phone-format-small">Format: (123)456-7890</small>
+              <small className="phone-format-small">US National Format: (123) 456-7890</small>
               {formMessage.message
                 ? <p className="form-message-paragraph" style={{ color: formMessage.textColor }}>{formMessage.message}</p>
                 : ''}
@@ -173,7 +175,7 @@ class IndexPage extends React.Component {
             grid-template-areas: 
               "phone-label phone-label ."
               "phone-input clear-input submit-input"
-              "phone-format-small . ."
+              "phone-format-small phone-format-small ."
               "form-message-paragraph form-message-paragraph ."
               "twilio-img twilio-img .";
             justify-content: center;
