@@ -35,13 +35,6 @@ PhoneNumbers.init({
       is: /^\+\d{3,15}$/,
     },
   },
-  // confirmation_code: {
-  //   type: DataTypes.STRING(255),
-  //   allowNull: false,
-  //   validate: {
-  //     is: /^[a-zA-Z0-9]+$/,
-  //   },
-  // },
   subscription_status: {
     type: DataTypes.STRING(10),
     allowNull: false,
@@ -51,16 +44,6 @@ PhoneNumbers.init({
   },
 }, {
   // Other model options go here.
-  // indexes: [
-  //   // A BTREE index
-  //   {
-  //     name: 'phone_numbers_confirmation_code_idx',
-  //     using: 'BTREE',
-  //     fields: [
-  //       'confirmation_code',
-  //     ],
-  //   },
-  // ],
   sequelize, // We need to pass the connection instance.
   tableName: process.env.DB_TABLE_NAME || 'phone_numbers', //  Tell Sequelize the name of the table directly.
   freezeTableName: true, // Enforcing the table name to be equal to the model name.
