@@ -4,35 +4,28 @@ const cors = require('cors');
 const express = require('express');
 const next = require('next');
 const morgan = require('morgan');
-const twilio = require('twilio');
-const query = require('../database/query.js');
-const PhoneNumbers = require('../database/model.js');
 
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-const { MessagingResponse } = twilio.twiml;
 const port = process.env.PORT || 3000;
-const homepage = process.env.HOMEPAGE || `http://localhost:${port}/`;
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
-/**
- * Twilio Lookup API to perform mobile phone number validation and formatting without the need for
- * RegEx.
- * @function
- * @param {string} phoneNumber - A E.164 phone number.
- * @returns {boolean} Returns `true` if `phoneNumber` is a valid mobile phone number. Otherwise,
- * `false`.
- */
+const homepage = process.env.HOMEPAGE || `http://localhost:${port}/`;
+
+// TwiML™ Message.
+const MessagingResponse = require('twilio').twiml.MessagingResponse;
+
+// PhoneNumbers Model.
+const { Op } = require('sequelize');
+const PhoneNumbers = require('../database/model.js');
+const twilioClient = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
 const verifyPhoneNumber = async (phoneNumber) => {
   try {
-    const phoneNumberLookUp = await twilioClient.lookups
-      .phoneNumbers(phoneNumber)
-      .fetch({ type: ['carrier'] });
-    return phoneNumberLookUp.carrier.type === 'mobile';
+    const phoneNumberLookup = await twilioClient.lookups.phoneNumbers(phoneNumber).fetch({ type: ['carrier'] });
+    return [phoneNumberLookup.carrier.type === 'mobile' && phoneNumberLookup.countryCode === 'US'];
   } catch (err) {
-    console.error(err);
-    return false;
+    return [false, err];
   }
 };
 
@@ -45,88 +38,73 @@ app.prepare().then(() => {
   server.use(compression());
   server.use(morgan('dev'));
 
-  server.post('/sms-form', async (req, res) => {
-    const { phoneRecord } = req.body;
-
-    try {
-      const isValid = await verifyPhoneNumber(phoneRecord.e164_format);
-
-      if (isValid) {
-        query.insertPhoneRecord(phoneRecord, res);
-      } else {
-        res.status(500).send({ message: 'Invalid mobile phone number.' });
-      }
-    } catch (err) {
-      console.error(err);
-
-      res.status(500).send({ message: `${err.message}` });
-    }
-  });
-
   server.post('/sms-inbound', async (req, res) => {
-    /** Creates a new instance of the `TwiML™ Message` */
     const twiml = new MessagingResponse();
+    const [isValid, err] = await verifyPhoneNumber(req.body.From);
 
-    if (/^\s*yes\s*$/i.test(req.body.Body)) {
-      /* The `findByPk` method obtains only a single entry from the table, using the provided
-         primary key. */
+    if (!isValid) {
+      if (err) {
+        twiml.message(`${err}`);
+      } else {
+        twiml.message('Expected\n{\n\tcountryCode: \'US\',\n\tcarrier: {\n\t\ttype: \'mobile\'\n\t}\n}');
+      }
+
+      res.writeHead(200, { 'Content-Type': 'text/xml' });
+      res.end(twiml.toString());
+      return; /* `return` statement is required. Otherwise, `UnhandledPromiseRejectionWarning: Error
+                 [ERR_HTTP_HEADERS_SENT]: Cannot set headers after they are sent to the client`. */
+    }
+
+    if (/^enter$/i.test(req.body.Body)) {
+      await PhoneNumbers.findOrCreate({
+        where: {
+          e164_format: req.body.From,
+          subscription_status: {
+            [Op.iRegexp]: '^pending$', // Not case-sensitive.
+          },
+        },
+        defaults: {
+          country_code: '1',
+          identification_code: req.body.From.slice(2, 5),
+          subscriber_number: req.body.From.slice(5),
+          e164_format: req.body.From,
+          subscription_status: 'subscribed',
+        },
+      });
+
+      twiml.message(`You have successfully subscribed to messages from this number. Reply EXIT to unsubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
+    } else if (/^confirm$/i.test(req.body.Body)) {
       const user = await PhoneNumbers.findByPk(req.body.From);
 
-      if (user) { // Equivalent to: user !== null
-        if (/^pending$/i.test(user.subscription_status)) { // A user's phone number is not yet subscribed.
-          /* UPDATE phone_numbers
-             SET subscription_status='subscribed'
-             WHERE e164_format=user.e164_format; */
+      if (user !== null) {
+        if (/^pending$/i.test(user.subscription_status)) {
           await PhoneNumbers.update({ subscription_status: 'subscribed' }, {
             where: {
               e164_format: user.e164_format,
             },
           });
-
-          twiml.message(`You have successfully subscribed to messages from this number. Reply STOP to unsubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
-        } else { // A user's phone number is already subscribed.
-          twiml.message(`You have successfully subscribed to messages from this number. Reply STOP to unsubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
         }
-      } else { // Equivalent to: user === null
-        twiml.message(`Reply START to subscribe.\n\n${homepage}`);
-      }
-    } else if (/^\s*stop\s*$/i.test(req.body.Body)) {
-      const user = await PhoneNumbers.findByPk(req.body.From);
 
-      if (user) { // Equivalent to: user !== null
-        await PhoneNumbers.destroy({
-          where: {
-            e164_format: user.e164_format,
-          },
-          limit: 1,
-        });
-      } else { // Equivalent to: user === null
-        twiml.message(`Reply START to subscribe.\n\n${homepage}`);
+        twiml.message(`You have successfully subscribed to messages from this number. Reply EXIT to unsubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
+      } else {
+        twiml.message(`Reply ENTER to subscribe.\n\n${homepage}`);
       }
-    } else if (/^\s*start\s*$/i.test(req.body.Body)) {
-      if (req.body.FromCountry === 'US') { // `FromCountry` - The country of the called sender.
-        try {
-          await PhoneNumbers.create({
-            country_code: '1',
-            identification_code: req.body.Body.slice(2, 5),
-            subscriber_number: req.body.Body.slice(5),
-            e164_format: req.body.Body,
-            subscription_status: 'subscribed',
-          });
-        } catch (err) {
-          const subscriptionStatus = err.errors[0].instance.dataValues.subscription_status;
+    } else if (/^exit$/i.test(req.body.Body)) {
+      await PhoneNumbers.destroy({
+        where: {
+          e164_format: req.body.From,
+        },
+        limit: 1,
+        force: true, /* If set to `true` then execute `DELETE FROM "posts" WHERE "e164_format" =
+                        'E164PhoneNumber' LIMIT 1`.
 
-          if (/^subscribed$/i.test(subscriptionStatus)) {
-            twiml.message(`You have successfully subscribed to messages from this number. Reply STOP to unsubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
-          } else {
-            twiml.message(`An unexpected error occurred on a send. Msg&Data Rates May Apply.\n\n${homepage}`);
-          }
-        } // end try-catch
-      } else { // Not a US mobile number.
-        twiml.message(`An unexpected error occurred on a send. Msg&Data Rates May Apply.\n\n${homepage}`);
-      }
+                        If set to `false` (default) then execute `DELETE FROM "phone_numbers" WHERE
+                        "e164_format" IN (SELECT "e164_format" FROM "phone_numbers" WHERE "e164_
+                        format" = 'E164PhoneNumber' LIMIT 1)`. */
+      });
+      twiml.message(`You have successfully been unsubscribed. You will not receive any more messages from this number. Reply ENTER to resubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
     } else {
-      twiml.message(`Reply START to subscribe.\n\n${homepage}`);
+      twiml.message(`An unexpected error occurred on a send. Reply ENTER to subscribe. Reply EXIT to unsubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
     }
 
     res.writeHead(200, { 'Content-Type': 'text/xml' });
