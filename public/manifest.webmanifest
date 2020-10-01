@@ -1,4 +1,11 @@
 {
+  "short_name": "Twilio SMS COVID-19 San Francisco, CA Sign-up Form",
+  "name": "Twilio SMS COVID-19 Updates in San Francisco, CA Sign-up Form",
+  "start_url": "http://localhost:3000",
+  "display": "fullscreen",
+  "prefer_related_applications": false,
+  "background_color": "#000000",
+  "theme_color": "#0D122B",
   "icons": [
     {
       "src": "/maskable_icon.png",
