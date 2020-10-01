@@ -1,3 +1,4 @@
+const axios = require('axios');
 const bodyParser = require('body-parser');
 const compression = require('compression');
 const cors = require('cors');
@@ -29,6 +30,16 @@ const verifyPhoneNumber = async (phoneNumber) => {
   }
 };
 
+const sendSMSOutbound = (e164PhoneNumber, body) => {
+  twilioClient.messages
+    .create({
+      to: e164PhoneNumber,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      body,
+    })
+    .then((message) => console.log(message));
+};
+
 app.prepare().then(() => {
   const server = express();
 
@@ -37,6 +48,63 @@ app.prepare().then(() => {
   server.use(bodyParser.json());
   server.use(compression());
   server.use(morgan('dev'));
+
+  server.post('/sms-form', async (req, res) => {
+    const { phoneRecord, captchaResponse } = req.body;
+
+    try {
+      const reCaptchaSiteVerifyRes = await axios.post('https://www.google.com/recaptcha/api/siteverify', null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+        },
+        params: {
+          secret: process.env.reCAPTCHA_SECRET_KEY,
+          response: captchaResponse,
+        },
+      });
+
+      const { data: reCaptchaChallenge } = reCaptchaSiteVerifyRes;
+
+      if (!reCaptchaChallenge.success) {
+        res.status(500).send({ message: 'Invalid response to reCAPTCHA challenge.' });
+        return;
+      }
+    } catch (err) {
+      console.error(err);
+      res.status(500).send({ message: `${err}` });
+      return;
+    }
+
+    const [isValid, err] = await verifyPhoneNumber(phoneRecord.e164_format);
+
+    if (!isValid) {
+      if (err) {
+        res.status(500).send({ message: `${err}` });
+      } else {
+        res.status(500).send({ message: 'Expected: \'US\' country code and \'mobile\' phone number.' });
+      }
+
+      return;
+    }
+
+    const [user, isCreated] = await PhoneNumbers.findOrCreate({
+      where: {
+        e164_format: phoneRecord.e164_format,
+        subscription_status: {
+          [Op.iRegexp]: '^(pending|subscribed)$', // Not case-sensitive.
+        },
+      },
+      defaults: phoneRecord,
+    });
+
+    if (isCreated || /^pending$/i.test(user.subscription_status)) {
+      sendSMSOutbound(user.e164_format, `Reply CONFIRM to subscribe. Reply EXIT to unsubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
+      res.status(500).send({ message: 'Pending subscription.' });
+    } else {
+      sendSMSOutbound(user.e164_format, `You have successfully subscribed to messages from this number. Reply EXIT to unsubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
+      res.send({ message: 'You have successfully subscribed to messages.' });
+    }
+  });
 
   server.post('/sms-inbound', async (req, res) => {
     const twiml = new MessagingResponse();
@@ -56,21 +124,25 @@ app.prepare().then(() => {
     }
 
     if (/^enter$/i.test(req.body.Body)) {
-      await PhoneNumbers.findOrCreate({
-        where: {
-          e164_format: req.body.From,
-          subscription_status: {
-            [Op.iRegexp]: '^pending$', // Not case-sensitive.
-          },
-        },
-        defaults: {
+      const user = await PhoneNumbers.findByPk(req.body.From);
+
+      if (user !== null) {
+        if (/^pending$/i.test(user.subscription_status)) {
+          await PhoneNumbers.update({ subscription_status: 'subscribed' }, {
+            where: {
+              e164_format: user.e164_format,
+            },
+          });
+        }
+      } else {
+        await PhoneNumbers.create({
           country_code: '1',
           identification_code: req.body.From.slice(2, 5),
           subscriber_number: req.body.From.slice(5),
           e164_format: req.body.From,
           subscription_status: 'subscribed',
-        },
-      });
+        });
+      }
 
       twiml.message(`You have successfully subscribed to messages from this number. Reply EXIT to unsubscribe. Msg&Data Rates May Apply.\n\n${homepage}`);
     } else if (/^confirm$/i.test(req.body.Body)) {
