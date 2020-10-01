@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Head from 'next/head';
 import React from 'react';
+import { register, unregister } from 'next-offline/runtime';
 
 class IndexPage extends React.Component {
   constructor(props) {
@@ -22,7 +23,13 @@ class IndexPage extends React.Component {
   }
 
   componentDidMount() {
+    document.documentElement.setAttribute('lang', 'en');
     document.body.setAttribute('style', 'font-family: "Open Sans", sans-serif;');
+    register('/service-worker.js', { scope: '/' });
+  }
+
+  componentWillUnmount() {
+    unregister();
   }
 
   clearForm() {
@@ -44,7 +51,20 @@ class IndexPage extends React.Component {
   }
 
   async handleSubmit(event) {
+    // alert(grecaptcha.getResponse(/*widget*/));
     event.preventDefault();
+
+    const captchaResponse = grecaptcha.getResponse();
+
+    if (!captchaResponse) {
+      this.setState({
+        formMessage: {
+          message: 'Please complete the captcha below.',
+          textColor: '#F22F46', // Twilio Red
+        },
+      });
+      return;
+    }
 
     const { phoneNumber } = this.state;
 
@@ -69,7 +89,8 @@ class IndexPage extends React.Component {
       phoneRecord.subscriber_number = partitionedPhoneNumber[1] + partitionedPhoneNumber[2];
       phoneRecord.e164_format = '+' + phoneRecord.country_code + phoneRecord.identification_code 
         + phoneRecord.subscriber_number;
-      axios.post('/sms-form', { phoneRecord })
+
+      axios.post('/sms-form', { phoneRecord, captchaResponse })
         .then((res) => {
           const { message } = res.data;
 
@@ -88,9 +109,12 @@ class IndexPage extends React.Component {
           this.setState({
             formMessage: {
               message,
-              textColor: '#F22F46',
+              textColor: '#F22F46', // Twilio Red
             },
           });
+        })
+        .finally(() => {
+          grecaptcha.reset();
         });
     }
   }
@@ -108,15 +132,22 @@ class IndexPage extends React.Component {
             content="Twilio Programmable SMS API COVID-19 City
                     of San Francisco, CA React.js application."
           />
+          <meta name="theme-color" content="#0D122B" />
           <link rel="apple-touch-icon" href="/covid-19-cell.png" />
           <link rel="icon" href="/favicon.ico" />
+          <link rel="manifest" href="/manifest.webmanifest" />
           <link rel="preconnect" href="https://fonts.googleapis.com/" crossOrigin="true" />
           <link rel="prefetch" href="https://fonts.googleapis.com/css2?family=Open+Sans" crossOrigin="true" />
+          {/* <script type="text/javascript" src="https://www.google.com/recaptcha/api.js" async defer /> */}
+          <script type="text/javascript" src="/service-worker.js" />
+          <script type="text/javascript" src="/register-sw.js" />
+          {/* <script type="text/javascript" src="/recaptcha-v2.js" /> */}
         </Head>
         <div className="sms-container">
           <fieldset>
             <legend className="header2">City of San Francisco COVID-19 SMS Text Delivery Sign-up Form</legend>
             <form className="form-container" onSubmit={this.handleSubmit}>
+            {/* <form className="form-container" onSubmit={this.handleSubmit}> */}
               <label htmlFor="phone" className="phone-label">Enter your phone number:</label>
               <input type="text" id="phone" className="phone-input" name="phoneNumber" placeholder="(123) 456-7890" pattern="\([0-9]{3}\)\s{1}[0-9]{3}-[0-9]{4}" minLength="14" maxLength="14" autoComplete="on" onChange={this.handleChange} value={phoneNumber} required />
               <input type="reset" className="clear-input" value="Clear" onClick={this.clearForm} />
@@ -125,9 +156,13 @@ class IndexPage extends React.Component {
               {formMessage.message
                 ? <p className="form-message-paragraph" style={{ color: formMessage.textColor }}>{formMessage.message}</p>
                 : ''}
-              <img src="https://www.twilio.com/docs/static/company/img/badges/red/twilio-badge-red.ace22c16f.png" className="twilio-img" alt="twilio badge" />
+              {/* <div id="recaptcha-v2-widget" className="g-recaptcha"></div> */}
+              <div className="g-recaptcha" data-sitekey={process.env.NEXT_PUBLIC_reCAPTCHA_SITE_KEY} data-theme="dark" />
+              <img src="/twilio-badge-red.475897ec8.svg" className="twilio-img" alt="twilio badge" />
             </form>
           </fieldset>
+          <script type="text/javascript" src="https://www.google.com/recaptcha/api.js" async defer />
+          {/* <script src="https://www.google.com/recaptcha/api.js?onload=onloadCallback&render=explicit" async defer /> */}
         </div>
         <style jsx>{`
           .sms-container {
@@ -161,23 +196,27 @@ class IndexPage extends React.Component {
           }
           .twilio-img {
             grid-area: twilio-img;
-            height: 64px;
-            width: 240px;
+            width: 100%;
+            height: auto;
           }
           .header2 {
             font-size: 1.5em;
             font-weight: bolder;
           }
+          .g-recaptcha {
+            grid-area: g-recaptcha;
+          }
           .form-container {
             display: grid;
             grid-gap: 8px 8px;
-            grid-template: auto / 157px 75px 75px auto;
+            grid-template: auto / fit-content(157px) fit-content(75px) fit-content(75px);
             grid-template-areas: 
               "phone-label phone-label ."
               "phone-input clear-input submit-input"
               "phone-format-small phone-format-small ."
-              "form-message-paragraph form-message-paragraph ."
-              "twilio-img twilio-img .";
+              "form-message-paragraph form-message-paragraph form-message-paragraph"
+              "g-recaptcha g-recaptcha g-recaptcha"
+              "twilio-img twilio-img twilio-img";
             justify-content: center;
           }
       `}</style>
