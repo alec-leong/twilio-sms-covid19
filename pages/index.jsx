@@ -177,7 +177,7 @@ class IndexPage extends React.Component {
       <div>
         <Head>
           <meta charSet="UTF-8" />
-          <title>Title</title>
+          <title>COVID-19 SF, CA</title>
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <meta
             name="description"
