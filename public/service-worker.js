@@ -22,6 +22,8 @@ self.addEventListener('activate', (event) => {
 // });
 
 self.addEventListener('fetch', (event) => {
+  console.log('Inside the fetch handler:', event);
+
   if (event.request.method === 'GET') {
     event.respondWith(
       caches.match(event.request)
