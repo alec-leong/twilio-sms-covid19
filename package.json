@@ -7,7 +7,7 @@
     "db:init": "psql -U postgres < ./database/schema.sql",
     "lint": "npx eslint .",
     "dev": "cross-env NODE_ENV=development nodemon ./server/server.js",
-    "build": "next build",
+    "build": "cross-env NODE_ENV=production next build",
     "start": "cross-env NODE_ENV=production node ./server/server.js"
   },
   "keywords": [],
