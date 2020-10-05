@@ -174,7 +174,7 @@ class IndexPage extends React.Component {
   render() {
     const { phoneNumber, formMessage } = this.state;
     return (
-      <div>
+      <>
         <Head>
           <meta charSet="UTF-8" />
           <title>COVID-19 SF, CA</title>
@@ -267,7 +267,7 @@ class IndexPage extends React.Component {
             justify-content: center;
           }
       `}</style>
-      </div>
+      </>
     );
   }
 }
