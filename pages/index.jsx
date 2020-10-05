@@ -208,8 +208,8 @@ class IndexPage extends React.Component {
             </form>
           </fieldset>
           <script type="text/javascript" src="https://www.google.com/recaptcha/api.js" async defer />
-          <script type="text/javascript" src="/service-worker.js" />
-          <script type="text/javascript" src="/register-sw.js" />
+          <script type="text/javascript" src="/service-worker.js" defer />
+          <script type="text/javascript" src="/register-sw.js" defer />
         </div>
         <style jsx>{`
           .sms-container {
