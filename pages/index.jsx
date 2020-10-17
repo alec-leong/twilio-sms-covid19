@@ -185,6 +185,7 @@ class IndexPage extends React.Component {
                     of San Francisco, CA React.js application."
           />
           <meta name="theme-color" content="#0D122B" />
+          <meta property="og:image" content="/favicon.ico" />
           <link rel="apple-touch-icon" href="/covid-19-cell.png" />
           <link rel="icon" href="/favicon.ico" />
           <link rel="manifest" href="/manifest.webmanifest" />
