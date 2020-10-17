@@ -1,33 +1,26 @@
-require('dotenv').config();
 const { Sequelize } = require('sequelize');
 
-const database = process.env.DB_NAME || 'covid19';
-const username = process.env.DB_USERNAME || 'postgres';
-const password = process.env.DB_PASSWORD || '';
-let sequelize;
-
-// Connect to the database.
-try {
-  sequelize = new Sequelize(database, username, password, {
-    host: process.env.DB_HOST || 'localhost',
-    dialect: process.env.DB_DIALECT || 'postgres',
-    port: process.env.DB_PORT || 5432,
-  });
-} catch (err) {
-  console.error(err);
-  process.exit(1);
-}
-
-// Self-executing anonymous function.
-(async () => {
+/**
+ * Returns an entry point to sequelize if OK connection to a database. Otherwise, will throw an
+ * error.
+ * @async
+ * @function
+ * @throws Will throw an error if BAD connection to a database.
+ * @param {string} database - The name of the database
+ * @param {string} username - The username which is used to authenticate against the database.
+ * @param {string} password - The password which is used to authenticate against the database.
+ * @param {Object} options - An object with options.
+ * @param {string} options.host - The host of the relational database.
+ * @param {string} options.dialect - The dialect of the database you are connecting to. One of
+ * mysql, postgres, sqlite and mssql.
+ * @param {number} options.port - The port of the relational database.
+ * @returns {Object} The entry point to sequelize.
+ */
+module.exports = async (database, username, password, options) => {
+  // Connect to the database.
+  const sequelize = new Sequelize(database, username, password, options);
   // Test if the connection is OK.
-  try {
-    await sequelize.authenticate();
-    console.log('Connection has been established successfully.');
-  } catch (err) {
-    console.error('Unable to connect to the database:', err);
-    process.exit(1);
-  }
-})();
-
-module.exports = sequelize;
+  await sequelize.authenticate();
+  console.log('Connection has been established successfully.');
+  return sequelize;
+};
